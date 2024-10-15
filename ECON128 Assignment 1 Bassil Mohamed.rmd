@@ -1,0 +1,61 @@
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(maps)
+
+# import dataset, filter for 2020 election
+
+election<-read.csv("https://www.dropbox.com/scl/fi/9d6ctufur3g72nfdtneea/countypres_20002020.csv?rlkey=vm0mtz12wgh6qxsgf7ops6pjx&dl=1")
+election_2020 <- election %>% filter(year == 2020)
+
+# group by state and party, calculate vote share
+
+state_summary <- election_2020 %>%
+  group_by(state, party) %>%
+  summarise(total_votes_party = sum(candidatevotes),
+            total_votes_state = sum(totalvotes)) %>%
+  ungroup()
+
+state_summary <- state_summary %>%
+  mutate(vote_share = (total_votes_party / total_votes_state) * 100)
+
+# determining winning parties
+
+winning_parties <- state_summary %>%
+  group_by(state) %>%
+  top_n(1, total_votes_party) %>%
+  ungroup()
+
+# print(winning_parties)
+
+# loading state map, joining with winning parties
+us_states <- map_data("state")
+winning_parties$state <- tolower(winning_parties$state)
+
+# plotting the map
+
+map_data <- left_join(us_states, winning_parties, by = c("region" = "state"))
+ggplot(map_data, aes(x = long, y = lat, group = group, fill = party)) +
+  geom_polygon(color = "black") +
+  scale_fill_manual(values = c("DEMOCRAT" = "blue", "REPUBLICAN" = "red")) +
+  theme_minimal() +
+  labs(title = "2020 US Presidential Election Results by State",
+       fill = "Winning Party")
+
+# number of republican votes by state
+
+republican_votes <- state_summary %>%   
+  filter(party == "REPUBLICAN")
+
+republican_votes$state <- tolower(republican_votes$state)
+map_data_republican <- left_join(us_states, republican_votes, by = c("region" = "state"))
+
+# plotting republican vote map
+
+p_republican <- ggplot(map_data_republican, aes(x = long, y = lat, group = group, fill = vote_share)) +
+  geom_polygon(color = "black") +
+  scale_fill_gradient(low = "white", high = "darkred", name = "Republican Vote Share (%)") +
+  theme_minimal() +
+  labs(title = "Republican Vote Share by State in 2020")
+
+p_republican
