@@ -2,6 +2,8 @@ library(tidyverse)
 library(ggplot2)
 library(dplyr)
 library(maps)
+library(gridExtra)
+library(gganimate)
 
 # import dataset, filter for 2020 election
 
@@ -58,4 +60,61 @@ p_republican <- ggplot(map_data_republican, aes(x = long, y = lat, group = group
   theme_minimal() +
   labs(title = "Republican Vote Share by State in 2020")
 
-p_republican
+# preparing US county data and making sure it's written similarly in the dataset
+
+us_counties <- map_data("county")
+df$state <- tolower(df$state)
+df$county_name <- tolower(df$county_name)
+
+# creating a function which generates a map for each year
+
+years <- c(2000, 2004, 2008, 2012, 2016, 2020)
+create_election_map <- function(election_year) {
+  # Filter data for the specific year
+  df_year <- df %>% 
+    filter(year == election_year)
+
+# finding the winning candidate by county
+
+county_summary <- df_year %>%
+    group_by(state, county_name, party) %>%
+    summarise(total_votes_party = sum(candidatevotes)) %>%
+    ungroup() %>%
+    group_by(state, county_name) %>%
+    top_n(1, total_votes_party) %>%
+    ungroup()
+
+# merging map data with county level results
+
+map_data_year <- us_counties %>%
+    left_join(county_summary, by = c("region" = "state", "subregion" = "county_name"))
+
+# plotting the map
+
+ ggplot(map_data_year, aes(x = long, y = lat, group = group, fill = party)) +
+    geom_polygon(color = "black") +
+    scale_fill_manual(values = c("DEMOCRAT" = "blue", "REPUBLICAN" = "red"),
+                      na.value = "grey") +
+    theme_void() +
+    labs(title = paste("US Election", election_year)) +
+    theme(legend.position = "none")
+
+}
+
+# creating 6 maps for all 6 elections
+maps <- lapply(years, create_election_map)
+grid.arrange(grobs = maps, nrow = 2, ncol = 3)
+
+# creating an animated map
+
+p <- ggplot(map_data_all_years, aes(x = long, y = lat, group = group, fill = party)) +
+  geom_polygon(color = "black") +
+  scale_fill_manual(values = c("DEMOCRAT" = "blue", "REPUBLICAN" = "red"),
+                    na.value = "grey") +
+  theme_void() +
+  labs(title = "US Presidential Election Results: {closest_state}",
+       fill = "Winning Party") +
+  transition_states(year, state_length = 5, transition_length = 1) +
+  ease_aes('linear')
+
+animate(p, duration = 30, fps = 20)
